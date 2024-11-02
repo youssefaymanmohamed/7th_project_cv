@@ -100,6 +100,24 @@ def extract_hog(images):
         hog_features.append(hog_feat)
     return hog_features
 
+def extract_SIFT_features(images):
+    """
+    Extracts SIFT (Scale-Invariant Feature Transform) features from a list of images.
+
+    Parameters:
+    images (list of numpy.ndarray): A list of images in BGR format.
+
+    Returns:
+    list of numpy.ndarray: A list where each element is an array of SIFT descriptors for the corresponding image.
+    """
+    sift = cv2.SIFT_create() # create a SIFT object
+    features = []
+    for img in images:
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        kp, des = sift.detectAndCompute(gray, None) # detect keypoints and compute SIFT descriptors for the image
+        features.append(des)
+    return features
+
 def extract_deep_features_vgg16(images, model):
     """
     Extract deep features using VGG16.
