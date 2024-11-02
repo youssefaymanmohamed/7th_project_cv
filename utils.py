@@ -22,65 +22,82 @@ def load_images_from_folder(folder, target_size=(224, 224)):
     np.array: Array of loaded images.
     """
     images = []
-    for root, _, files in os.walk(folder):
-        for file in files:
-            img_path = os.path.join(root, file)
+    for root, _, files in os.walk(folder): # os.walk() generates the file names in a directory tree by walking either top-down or bottom-up
+        for file in files: 
+            img_path = os.path.join(root, file) # join the root directory and the file name to get the full path of the image
             if os.path.isfile(img_path) and img_path.endswith(('png', 'jpg', 'jpeg')):
-                img = Image.open(img_path).resize(target_size)
+                img = Image.open(img_path).resize(target_size) # open the image and resize it to the target size
                 img = np.array(img)
                 images.append(img)
     return np.array(images)
 
-def extract_color_histogram(image, bins=(8, 8, 8)):
+def extract_color_histogram(images):
     """
-    Extract color histogram from an image.
+    Extracts color histograms from a list of images.
+
+    This function converts each image from RGB to HSV color space, calculates the histogram
+    for each image, normalizes the histogram, and then flattens it. The resulting histograms
+    are returned as a list.
 
     Parameters:
-    image (np.array): Input image.
-    bins (tuple): Number of bins for each color channel.
+    images (list of numpy.ndarray): A list of images in RGB color space.
 
     Returns:
-    np.array: Flattened color histogram.
+    list of numpy.ndarray: A list of flattened and normalized histograms for each image.
     """
-    hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
-    hist = cv2.calcHist([hsv], [0, 1, 2], None, bins, [0, 180, 0, 256, 0, 256])
-    hist = cv2.normalize(hist, hist).flatten()
-    return hist
+    histograms = []
+    for img in images:
+        # Convert the image from RGB to HSV color space
+        hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+        # Calculate the histogram of the image
+        hist = cv2.calcHist([hsv], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])  # hsv channels, 0 ,1, 2 are the channels of hsv | none is the mask |  8, 8, 8 are the number of bins for each channel | 0, 256, 0, 256, 0, 256 are the ranges for each channel
+        # Normalize the histogram
+        hist = cv2.normalize(hist, hist).flatten()  # normalize the histogram and flatten it
+        histograms.append(hist) # append the histogram to the list of histograms for all images  
+    return histograms
 
-def extract_lbp(image, num_points=24, radius=8):
+# Calculate LBP features for the images
+def extract_lbp(images):
     """
-    Extract Local Binary Patterns (LBP) from an image.
+    Extracts Local Binary Pattern (LBP) features from a list of images.
 
     Parameters:
-    image (np.array): Input image.
-    num_points (int): Number of points for LBP.
-    radius (int): Radius for LBP.
+    images (list of numpy.ndarray): List of images in RGB format.
 
     Returns:
-    np.array: LBP histogram.
+    list of numpy.ndarray: List of normalized histograms of LBP features for each image.
     """
-    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    lbp = local_binary_pattern(gray, num_points, radius, method="uniform")
-    (hist, _) = np.histogram(lbp.ravel(), bins=np.arange(0, num_points + 3), range=(0, num_points + 2))
-    hist = hist.astype("float")
-    hist /= (hist.sum() + 1e-6)
-    return hist
+    lbp_features = []
+    for img in images:
+        # Convert the image to grayscale
+        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        # Calculate the LBP features
+        lbp = local_binary_pattern(gray, 8, 1, method='uniform') # 8 neighbors, radius 1, uniform method is used to get a uniform pattern
+        # Calculate the histogram of the LBP image
+        hist, _ = np.histogram(lbp.ravel(), bins=np.arange(0, 60), range=(0, 59)) # 59 bins for the histogram | range is 0 to 59  | ravel() is used to flatten the array 
+        # Normalize the histogram
+        hist = hist.astype('float') / hist.sum()
+        lbp_features.append(hist)
+    return lbp_features
 
-def extract_hog(image, pixels_per_cell=(8, 8), cells_per_block=(2, 2), visualize=False):
+# Calculate HOG features for the images
+def extract_hog(images):
     """
-    Extract Histogram of Oriented Gradients (HOG) from an image.
+    Extract Histogram of Oriented Gradients (HOG) features from a list of images.
 
     Parameters:
-    image (np.array): Input image.
-    pixels_per_cell (tuple): Size of the cell.
-    cells_per_block (tuple): Number of cells per block.
-    visualize (bool): Whether to visualize the HOG.
+    images (list of numpy.ndarray): List of images in RGB format.
 
     Returns:
-    np.array: HOG features.
+    list of numpy.ndarray: List of HOG feature arrays for each image.
     """
-    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    hog_features = hog(gray, pixels_per_cell=pixels_per_cell, cells_per_block=cells_per_block, visualize=visualize)
+    hog_features = []
+    for img in images:
+        # Convert the image to grayscale
+        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        # Calculate the HOG features
+        hog_feat = hog(gray, orientations=8, pixels_per_cell=(16, 16), cells_per_block=(1, 1), block_norm='L2-Hys') # 8 orientations, 16x16 pixels per cell, 1x1 cells per block, L2-Hys block normalization
+        hog_features.append(hog_feat)
     return hog_features
 
 def extract_deep_features_vgg16(images, model):
