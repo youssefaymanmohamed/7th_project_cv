@@ -9,7 +9,7 @@ import time
 from sklearn.metrics import precision_score, recall_score, precision_recall_curve
 import time
 
-# Color Histogram
+# Color Histogram Calculltion from CV2 Library
 def extract_color_histogram(image, bins=(8, 8, 8)):
     # Convert the image to HSV color space
     hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
@@ -19,7 +19,7 @@ def extract_color_histogram(image, bins=(8, 8, 8)):
     hist = cv2.normalize(hist, hist).flatten()
     return hist
 
-# Extract texture features 
+# Extract texture features of locat binary pattern
 def extract_texture_features(img):
     # Convert image to grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
@@ -32,6 +32,7 @@ def extract_texture_features(img):
     hist /= (hist.sum() + 1e-6)
     return hist
 
+# Extract hog features using HOGDescriptor from CV2 Librariy
 def extract_hog (img):
     # Convert image to grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
@@ -41,8 +42,8 @@ def extract_hog (img):
     return hog_features
 
 
-
-def extract_vgg16_features(img):
+# EXtract Deep features using vgg16 pre tarined model 
+def extract_vgg16_features(img): 
     vgg16_model = VGG16(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
     # Resize the image to 224x224
     img = cv2.resize(img, (224, 224))
@@ -58,6 +59,7 @@ def extract_vgg16_features(img):
     features = features.flatten()
     return features
 
+# Function to get precision at 1 and precision at 10 and precision recall curve  and calculate retrival time 
 def evaluate_retrieval(query_features, dataset_features, dataset_labels, top_k=10):
     start_time = time.time()
     
