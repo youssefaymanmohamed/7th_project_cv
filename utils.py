@@ -6,16 +6,13 @@ from tensorflow.keras.preprocessing import image as tf_image
 from sklearn.metrics.pairwise import cosine_similarity
 from skimage.feature import local_binary_pattern
 import time
+from skimage.feature import hog
+from skimage import exposure
 from sklearn.metrics import precision_score, recall_score, precision_recall_curve
-import time
 
-# Color Histogram Calculltion from CV2 Library
-def extract_color_histogram(image, bins=(8, 8, 8)):
-    # Convert the image to HSV color space
+def Calculate_color_histograms(image, bins=(64, 64, 64)):
     hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
-    # Compute the color histogram
     hist = cv2.calcHist([hsv], [0, 1, 2], None, bins, [0, 256, 0, 256, 0, 256])
-    # Normalize the histogram
     hist = cv2.normalize(hist, hist).flatten()
     return hist
 
@@ -32,53 +29,61 @@ def extract_texture_features(img):
     hist /= (hist.sum() + 1e-6)
     return hist
 
-# Extract hog features using HOGDescriptor from CV2 Librariy
-def extract_hog (img):
-    # Convert image to grayscale
-    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    # Compute HOG features
-    hog = cv2.HOGDescriptor()
-    hog_features = hog.compute(gray)
-    return hog_features
+def compute_hog_features(image, orientations=9, pixels_per_cell=(8, 8), cells_per_block=(2, 2)):
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    hog_features, hog_image = hog(
+        image,
+        orientations=orientations,
+        pixels_per_cell=pixels_per_cell,
+        cells_per_block=cells_per_block,
+        block_norm='L2-Hys',
+        transform_sqrt=True,
+        visualize=True
+    )
+    return hog_features, hog_image
+
+def sift_describe_and_normalize(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    sift = cv2.SIFT_create()
+    keypoints, features = sift.detectAndCompute(image, None)
+    
+    if features is None:
+        return keypoints, None
+
+    # Normalize features
+    features /= features.sum(axis=1, keepdims=True) + 1e-7
+    features = np.sqrt(features)
+    features /= np.linalg.norm(features)
+    
+    return keypoints, features
+
+def flann_matcher(
+    query_descriptors: np.ndarray,
+    train_descriptors: np.ndarray,
+    k: int = 2,
+    ratio: float = 0.9,
+) -> np.ndarray:
 
 
-# EXtract Deep features using vgg16 pre tarined model 
-def extract_vgg16_features(img): 
-    vgg16_model = VGG16(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
-    # Resize the image to 224x224
-    img = cv2.resize(img, (224, 224))
-    # Convert the image to an array
-    img_array = tf_image.img_to_array(img)
-    # Expand the dimensions of the image
-    img_array = np.expand_dims(img_array, axis=0)
-    # Preprocess the image
-    img_array = preprocess_input(img_array)
-    # Extract features using the VGG16 model
-    features = vgg16_model.predict(img_array)
-    # Flatten the features
-    features = features.flatten()
-    return features
+    # Create the FLANN matcher
+    FLANN_INDEX_KDTREE = 1
+    index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
+    search_params = dict(checks=50)
+    flann = cv2.FlannBasedMatcher(index_params, search_params)
 
-# Function to get precision at 1 and precision at 10 and precision recall curve  and calculate retrival time 
-def evaluate_retrieval(query_features, dataset_features, dataset_labels, top_k=10):
-    start_time = time.time()
-    
-    # Calculate cosine similarities between the query and dataset features
-    similarities = cosine_similarity(query_features.reshape(1, -1), dataset_features).flatten()
-    
-    # Get the indices of the top-k most similar images
-    top_k_indices = similarities.argsort()[-top_k:][::-1]
-    
-    # Calculate precision at 1
-    precision_at_1 = precision_score([dataset_labels[top_k_indices[0]]], [1])
-    
-    # Calculate precision at 10
-    precision_at_10 = precision_score([dataset_labels[i] for i in top_k_indices], [1] * top_k)
-    
-    # Calculate precision-recall curve
-    precision, recall, _ = precision_recall_curve([dataset_labels[i] for i in top_k_indices], similarities[top_k_indices])
-    
-    # Calculate retrieval time
-    retrieval_time = time.time() - start_time
-    
-    return precision_at_1, precision_at_10, precision, recall, retrieval_time
+    # Convert the descriptors to numpy arrays
+    query_descriptors = np.array(query_descriptors, np.float32)
+    train_descriptors = np.array(train_descriptors, np.float32)
+
+    # Compute the matches
+    try:
+        matches = flann.knnMatch(query_descriptors, train_descriptors, k=k)
+    except Exception as e:
+        return []
+
+    # Apply the ratio test
+    good_matches = []
+    for m, n in matches:
+        if m.distance < ratio * n.distance:
+            good_matches.append(m)
+
+    return good_matches
